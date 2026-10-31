@@ -51,6 +51,7 @@
     details.more { margin: 12px 0 4px; border: 1px solid #ddd; border-radius: 4px; padding: 6px 8px; background: #fff; }
     details.more summary { cursor: pointer; font-size: 13px; font-weight: 600; }
     #resultHead { margin-top: 18px; }
+    h2.sec { font-size: 17px; margin: 4px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #222; }
     .ref2022 { font-size: 12px; color: #444; background: #f0f0f0; border-radius: 4px; padding: 6px 8px; margin: 0 0 12px; }
     .disclaimer { font-size: 12px; line-height: 1.4; color: #444; background: #fff; border: 1px solid #ddd; border-left: 3px solid #888; border-radius: 4px; padding: 8px 10px; margin: 12px 0 4px; }
     @media (max-width: 700px) { body { flex-direction: column; } #panel { width: 100%; max-height: 50vh; border-right: 0; border-bottom: 1px solid #ddd; } }
@@ -59,15 +60,16 @@
 <body>
   <div id="panel">
     <h1>Victoria Votes 2026</h1>
-    <p class="sub">See the 2022 result, or project 2026 from the latest polls or your own guess.</p>
+    <p class="sub">See what happened in 2022, then project 2026 from a poll or your own guess.</p>
 
     <div class="views">
-      <button id="v2022">2022 result</button>
-      <button id="v2026" class="on">Project 2026</button>
+      <button id="v2022">2022 Result</button>
+      <button id="v2026" class="on">2026 Projection</button>
     </div>
 
     <!-- 2022 RESULT (fixed) -->
     <div id="view2022" style="display:none">
+      <h2 class="sec">2022 Election Result</h2>
       <div class="ref2022">The actual result of the election on 26 November 2022. Nothing to adjust here.</div>
       <h3>Statewide primary vote (%)<span class="q" data-h="h_prim22">?</span></h3>
       <div class="help" id="h_prim22"><b>Primary vote</b> is the share of first-choice (number 1) votes for each party across Victoria.</div>
@@ -84,11 +86,12 @@
 
     <!-- PROJECT 2026 -->
     <div id="view2026">
-      <h3>Latest polls</h3>
+      <h2 class="sec">2026 Projection</h2>
+      <h3>Step 1: Pick a poll</h3>
       <div class="polls" id="polls"></div>
       <div class="pollinfo" id="pollinfo"></div>
 
-      <h3>Your guess: statewide primary vote (%)<span class="q" data-h="h_prim">?</span></h3>
+      <h3>Step 2: Adjust the vote (%) or make your own guess<span class="q" data-h="h_prim">?</span></h3>
       <div class="help" id="h_prim"><b>Primary vote</b> is the share of first-choice (number 1) votes for each party across Victoria. This is the figure polls usually report first. Start from a poll above, then drag to adjust.</div>
       <div id="primSliders"></div>
       <div class="total" id="total"></div>
@@ -115,7 +118,7 @@
       </details>
     </div>
 
-    <h2 id="resultHead">Projected result</h2>
+    <h2 id="resultHead">Projected seats</h2>
     <div class="bar" id="bar"><span class="majority"></span></div>
     <div style="font-size:12px;color:#666">Dashed line = 45 seats for majority</div>
 
@@ -341,7 +344,7 @@
 
     function update() {
       if (view === '2022') {
-        document.getElementById('resultHead').textContent = '2022 result';
+        document.getElementById('resultHead').textContent = 'Seats won';
         document.getElementById('closeHelp').textContent = 'Seats won by the smallest margins in 2022 (final two-candidate count).';
         document.getElementById('note').textContent = 'Seat winners and margins are the final 2022 two-candidate counts. Narracan voted at a supplementary election in January 2023.';
         render(p => {
@@ -364,7 +367,7 @@
       tEl.textContent = `Total: ${total.toFixed(1)}%` + (Math.abs(total - 100) > 0.05 ? ' (should add to 100)' : '');
       tEl.className = 'total' + (Math.abs(total - 100) > 0.05 ? ' bad' : '');
 
-      document.getElementById('resultHead').textContent = 'Projected result';
+      document.getElementById('resultHead').textContent = 'Projected seats';
       document.getElementById('closeHelp').textContent = 'Seats where the winner in this scenario is ahead by the smallest margin. A small shift in votes could change these.';
       document.getElementById('note').textContent =
         'Each party\'s 2022 seat vote is scaled by its statewide change (proportional swing), and each seat is calibrated so the 2022 figures reproduce the 2022 result. One Nation barely ran in 2022, so its vote is placed using an estimated regional lean (see More options). Greens split 80/15/5 and Others 30/35/35 (ALP/Coal/ONP); the lowest of the three majors is then excluded. 14 seats held fixed. Seats outlined in black change hands from the current holder. A scenario explorer, not a forecast.';
