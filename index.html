@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Victoria Votes 2026</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; color: #222; }
+    body { display: flex; }
+    #panel { width: 340px; padding: 16px; box-sizing: border-box; overflow-y: auto; background: #fafafa; border-right: 1px solid #ddd; }
+    #map { flex: 1; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { font-size: 13px; color: #666; margin: 0 0 12px; }
+    .tabs { display: flex; gap: 4px; margin-bottom: 14px; }
+    .tabs button, .presets button { flex: 1; padding: 7px; border: 1px solid #bbb; background: #fff; border-radius: 4px; cursor: pointer; font-size: 13px; }
+    .tabs button.on { background: #222; color: #fff; border-color: #222; }
+    .presets { display: flex; gap: 4px; margin: 6px 0 12px; }
+    .presets button { font-size: 12px; padding: 5px 3px; }
+    label { font-weight: 600; font-size: 14px; }
+    .row { display: grid; grid-template-columns: 92px 1fr 46px; align-items: center; gap: 6px; font-size: 13px; margin: 2px 0; }
+    .row span:last-child { text-align: right; font-weight: 700; }
+    input[type=range] { width: 100%; }
+    .val { font-size: 28px; font-weight: 700; }
+    .total { font-size: 12px; margin: 2px 0 10px; }
+    .total.bad { color: #c00; font-weight: 700; }
+    .bar { position: relative; display: flex; height: 26px; border-radius: 4px; overflow: hidden; margin: 14px 0 4px; }
+    .bar div { height: 100%; }
+    .majority { position: absolute; left: 51.1%; top: -4px; bottom: -4px; border-left: 2px dashed #000; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    td { padding: 3px 0; }
+    td.n { text-align: right; font-weight: 700; }
+    td.pair { font-size: 11px; color: #777; }
+    .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+    .verdict { font-weight: 700; margin: 10px 0 12px; }
+    h2 { font-size: 15px; margin: 16px 0 6px; }
+    h3 { font-size: 13px; margin: 12px 0 4px; color: #444; }
+    .note { font-size: 12px; color: #777; margin-top: 16px; }
+    @media (max-width: 700px) { body { flex-direction: column; } #panel { width: 100%; max-height: 50vh; border-right: 0; border-bottom: 1px solid #ddd; } }
+  </style>
+</head>
+<body>
+  <div id="panel">
+    <h1>Victoria Votes 2026</h1>
+    <p class="sub">What happens if votes swing from 2022?</p>
+
+    <div class="tabs">
+      <button id="tabSimple" class="on">Simple: 2PP swing</button>
+      <button id="tabAdv">Advanced: preferences</button>
+    </div>
+
+    <!-- SIMPLE MODE -->
+    <div id="simple">
+      <label for="tpp">Labor two-party preferred (statewide)</label>
+      <div class="val"><span id="tppVal">55.0</span>%</div>
+      <input type="range" id="tpp" min="40" max="60" step="0.5" value="55">
+    </div>
+
+    <!-- ADVANCED MODE -->
+    <div id="advanced" style="display:none">
+      <h3>Statewide primary vote (%)</h3>
+      <div id="primSliders"></div>
+      <div class="total" id="total"></div>
+
+      <h3>Preference flows (%)</h3>
+      <div id="flowSliders"></div>
+      <div class="presets">
+        <button data-preset="default">Default</button>
+        <button data-preset="weak">Weak ONP–LNP</button>
+        <button data-preset="deal">Preference deal</button>
+      </div>
+    </div>
+
+    <div class="bar" id="bar"><span class="majority"></span></div>
+    <div style="font-size:12px;color:#666">Dashed line = 45 seats for majority</div>
+
+    <div class="verdict" id="verdict"></div>
+    <table id="counts"></table>
+
+    <h2>Closest seats</h2>
+    <table id="close"></table>
+
+    <p class="note" id="note"></p>
+        <p class="note">Data: Victorian Electoral Commission 2022 results; boundaries © Vicmap (DataVic, CC BY 4.0); seat primaries compiled from Wikipedia (CC BY-SA). Held = party that won the seat at the 2022 election or a later by-election. Built by Tim  with QGIS and Leaflet.</p>
+  </div>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const COLOURS = {
+      'Labor': '#E13940', 'Liberal': '#1C4F9C', 'Nationals': '#006644',
+      'Greens': '#10C25B', 'One Nation': '#F36C21'
+    };
+    const PARTIES = ['Labor', 'Liberal', 'Nationals', 'Greens', 'One Nation'];
+
+    // Statewide 2022 primaries (the baseline the swing is measured from)
+    const S22 = { alp: 37.0, lnp: 34.5, grn: 11.5, onp: 0.3, oth: 17.1 };
+
+    // Slider definitions: [key, label, min, max, step, default]
+    const PRIMS = [
+      ['alp', 'Labor', 10, 50, 0.5, 26],
+      ['lnp', 'Coalition', 10, 50, 0.5, 26],
+      ['grn', 'Greens', 0, 30, 0.5, 13.5],
+      ['onp', 'One Nation', 0, 40, 0.5, 23.5],
+      ['oth', 'Others', 0, 30, 0.5, 11]
+    ];
+    const FLOWS = [
+      ['onp_lnp', 'ONP → Coal.', 0, 100, 5, 65],
+      ['lnp_onp', 'Coal. → ONP', 0, 100, 5, 55],
+      ['alp_lnp', 'ALP → Coal.', 0, 100, 5, 75]
+    ];
+    const PRESETS = {
+      default: { onp_lnp: 65, lnp_onp: 55 },
+      weak:    { onp_lnp: 20, lnp_onp: 20 },
+      deal:    { onp_lnp: 80, lnp_onp: 80 }
+    };
+
+    const map = L.map('map').setView([-37.0, 145.0], 7);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles &copy; Esri', maxZoom: 16
+    }).addTo(map);
+
+    let mode = 'simple';
+    let seatsLayer;
+
+    // Build a row of label + slider + value for each definition
+    function makeSliders(containerId, defs, prefix) {
+      const box = document.getElementById(containerId);
+      defs.forEach(([key, label, min, max, step, val]) => {
+        box.insertAdjacentHTML('beforeend',
+          `<div class="row"><span>${label}</span>
+           <input type="range" id="${prefix}${key}" min="${min}" max="${max}" step="${step}" value="${val}">
+           <span id="${prefix}${key}Val">${val}</span></div>`);
+      });
+    }
+    makeSliders('primSliders', PRIMS, 's_');
+    makeSliders('flowSliders', FLOWS, 'f_');
+
+    const num = id => parseFloat(document.getElementById(id).value);
+
+    // ---------- SIMPLE MODE: same rule as the QGIS "predicted" field ----------
+    function simpleResult(p, tpp) {
+      if (p.fixed === 1 || p.tpp22 === null) return { winner: p.held, margin: null, pair: 'Held fixed' };
+      const alp = p.tpp22 + (tpp - 55);
+      const winner = alp > 50 ? 'Labor' : (p.held === 'Nationals' ? 'Nationals' : 'Liberal');
+      return { winner, margin: Math.abs(alp - 50), pair: 'ALP v Coalition', detail: `Labor 2PP: ${alp.toFixed(1)}%` };
+    }
+
+    // ---------- ADVANCED MODE: same rules as the QGIS e_, r_, final_pair, pref_winner fields ----------
+    function prefResult(p, s, f) {
+      if (p.fixed === 1) return { winner: p.held, margin: null, pair: 'Held fixed' };
+      const coal = p.held === 'Nationals' ? 'Nationals' : 'Liberal';
+
+      // 1. estimate 2026 primaries: 2022 seat vote + statewide change
+      const e = {};
+      for (const k of ['alp', 'lnp', 'grn', 'onp', 'oth']) e[k] = Math.max(0, p[k] + s[k] - S22[k]);
+
+      // 2. distribute Greens and Others
+      const a = e.alp + 0.80 * e.grn + 0.30 * e.oth;
+      const l = e.lnp + 0.15 * e.grn + 0.35 * e.oth;
+      const o = e.onp + 0.05 * e.grn + 0.35 * e.oth;
+
+      // 3. exclude the lowest of the three, flow their votes
+      let x, y, nx, ny, pair;
+      if (o <= a && o <= l)      { x = a + o * (1 - f.onp_lnp); y = l + o * f.onp_lnp; nx = 'Labor'; ny = coal;         pair = 'ALP v Coalition'; }
+      else if (l <= a && l <= o) { x = a + l * (1 - f.lnp_onp); y = o + l * f.lnp_onp; nx = 'Labor'; ny = 'One Nation'; pair = 'ALP v ONP'; }
+      else                       { x = l + a * f.alp_lnp;       y = o + a * (1 - f.alp_lnp); nx = coal; ny = 'One Nation'; pair = 'Coalition v ONP'; }
+
+      const share = 100 * Math.max(x, y) / (x + y);
+      return {
+        winner: x > y ? nx : ny,
+        margin: share - 50,
+        pair,
+        detail: `Round 1: ALP ${a.toFixed(1)}, Coal ${l.toFixed(1)}, ONP ${o.toFixed(1)}<br>Final: ${pair}, winner ${share.toFixed(1)}%`
+      };
+    }
+
+    function update() {
+      // read inputs
+      document.getElementById('tppVal').textContent = num('tpp').toFixed(1);
+      const s = {}, f = {};
+      PRIMS.forEach(([k]) => { s[k] = num('s_' + k); document.getElementById('s_' + k + 'Val').textContent = s[k]; });
+      FLOWS.forEach(([k]) => { f[k] = num('f_' + k) / 100; document.getElementById('f_' + k + 'Val').textContent = num('f_' + k); });
+
+      const total = Object.values(s).reduce((t, v) => t + v, 0);
+      const tEl = document.getElementById('total');
+      tEl.textContent = `Total: ${total.toFixed(1)}%` + (Math.abs(total - 100) > 0.05 ? ' (should add to 100)' : '');
+      tEl.className = 'total' + (Math.abs(total - 100) > 0.05 ? ' bad' : '');
+
+      const counts = {};
+      PARTIES.forEach(k => counts[k] = 0);
+      const close = [];
+
+      seatsLayer.eachLayer(layer => {
+        const p = layer.feature.properties;
+        const r = mode === 'simple' ? simpleResult(p, num('tpp')) : prefResult(p, s, f);
+        counts[r.winner]++;
+        if (r.margin !== null) close.push({ name: p.name, winner: r.winner, margin: r.margin, pair: r.pair });
+
+        const flipped = r.winner !== p.held;
+        layer.setStyle({ fillColor: COLOURS[r.winner], color: flipped ? '#111' : '#fff', weight: flipped ? 2.5 : 0.8 });
+        if (flipped) layer.bringToFront();
+        layer.setTooltipContent(
+          `<b>${p.name}</b><br>2022: ${p.final22}<br>` +
+          (r.margin === null ? 'Held fixed (Greens/independent contest)' : r.detail) +
+          `<br>Result: <b>${r.winner}</b>${flipped ? ' (gain from ' + p.held + ')' : ''}`);
+      });
+
+      // seat bar
+      const bar = document.getElementById('bar');
+      bar.querySelectorAll('div').forEach(d => d.remove());
+      PARTIES.forEach(k => {
+        if (!counts[k]) return;
+        const d = document.createElement('div');
+        d.style.width = (counts[k] / 88 * 100) + '%';
+        d.style.background = COLOURS[k];
+        d.title = k + ': ' + counts[k];
+        bar.insertBefore(d, bar.querySelector('.majority'));
+      });
+
+      document.getElementById('counts').innerHTML = PARTIES.filter(k => counts[k])
+        .map(k => `<tr><td><span class="swatch" style="background:${COLOURS[k]}"></span>${k}</td><td class="n">${counts[k]}</td></tr>`).join('');
+
+      const coalition = counts['Liberal'] + counts['Nationals'];
+      document.getElementById('verdict').textContent =
+        counts['Labor'] >= 45 ? `Labor majority (${counts['Labor']} seats)` :
+        coalition >= 45 ? `Coalition majority (${coalition} seats)` :
+        `Hung parliament: Labor ${counts['Labor']}, Coalition ${coalition}, One Nation ${counts['One Nation']}`;
+
+      close.sort((a, b) => a.margin - b.margin);
+      document.getElementById('close').innerHTML = close.slice(0, 10)
+        .map(c => `<tr><td><span class="swatch" style="background:${COLOURS[c.winner]}"></span>${c.name}</td><td class="pair">${c.pair}</td><td class="n">${c.margin.toFixed(1)}%</td></tr>`).join('');
+
+      document.getElementById('note').textContent = mode === 'simple'
+        ? 'Uniform 2PP swing from 2022. 14 seats with Greens or independent contests are held fixed. A scenario explorer, not a forecast.'
+        : 'Each party\'s 2022 seat vote shifted by its statewide change. Greens split 80/15/5 and Others 30/35/35 (ALP/Coal/ONP); the lowest of the three majors is then excluded. One Nation barely ran in 2022, so its vote is spread almost evenly. 14 seats held fixed. A scenario explorer, not a forecast.';
+    }
+
+    function setMode(m) {
+      mode = m;
+      document.getElementById('simple').style.display = m === 'simple' ? '' : 'none';
+      document.getElementById('advanced').style.display = m === 'simple' ? 'none' : '';
+      document.getElementById('tabSimple').classList.toggle('on', m === 'simple');
+      document.getElementById('tabAdv').classList.toggle('on', m !== 'simple');
+      update();
+    }
+
+    fetch('data/districts.geojson')
+      .then(r => r.json())
+      .then(data => {
+        seatsLayer = L.geoJSON(data, {
+          style: { fillOpacity: 0.8 },
+          onEachFeature: (feat, layer) => layer.bindTooltip('')
+        }).addTo(map);
+
+        document.querySelectorAll('input[type=range]').forEach(el => el.addEventListener('input', update));
+        document.getElementById('tabSimple').onclick = () => setMode('simple');
+        document.getElementById('tabAdv').onclick = () => setMode('advanced');
+        document.querySelectorAll('[data-preset]').forEach(btn => btn.onclick = () => {
+          const pr = PRESETS[btn.dataset.preset];
+          for (const k in pr) document.getElementById('f_' + k).value = pr[k];
+          update();
+        });
+        update();
+      });
+
+  </script>
+</body>
+</html>
