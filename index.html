@@ -41,6 +41,11 @@
     .polls button.on { background: #222; color: #fff; border-color: #222; }
     .pollinfo { font-size: 12px; color: #555; min-height: 16px; margin-bottom: 12px; }
     .implied { font-size: 13px; margin: 8px 0 4px; }
+    .q { display: inline-block; width: 15px; height: 15px; line-height: 15px; text-align: center; border-radius: 50%; background: #ddd; color: #333; font-size: 11px; font-weight: 700; cursor: pointer; margin-left: 4px; vertical-align: 1px; user-select: none; }
+    .q:hover, .q.open { background: #222; color: #fff; }
+    .help { display: none; font-size: 12px; font-weight: 400; line-height: 1.4; color: #333; background: #fff8e1; border: 1px solid #e6d9a8; border-radius: 4px; padding: 6px 8px; margin: 4px 0 8px; }
+    .help.open { display: block; }
+    .modeinfo { font-size: 12px; color: #555; margin: -6px 0 12px; }
     .disclaimer { font-size: 12px; line-height: 1.4; color: #444; background: #fff; border: 1px solid #ddd; border-left: 3px solid #888; border-radius: 4px; padding: 8px 10px; margin: 12px 0 4px; }
     @media (max-width: 700px) { body { flex-direction: column; } #panel { width: 100%; max-height: 50vh; border-right: 0; border-bottom: 1px solid #ddd; } }
   </style>
@@ -55,30 +60,35 @@
     <div class="pollinfo" id="pollinfo"></div>
 
     <div class="tabs">
-      <button id="tabSimple" class="on">Simple: 2PP swing</button>
-      <button id="tabAdv">Advanced: preferences</button>
+      <button id="tabAdv" class="on">Detailed (recommended)</button>
+      <button id="tabSimple">Quick estimate</button>
     </div>
+    <div class="modeinfo" id="modeinfo"></div>
 
     <!-- SIMPLE MODE -->
-    <div id="simple">
-      <label for="tpp">Labor two-party preferred (statewide)</label>
+    <div id="simple" style="display:none">
+      <label for="tpp">Labor two-party preferred (statewide)</label><span class="q" data-h="h_tpp">?</span>
+      <div class="help" id="h_tpp"><b>Two-party preferred (2PP)</b> is each side's share after preferences, when every vote ends up with either Labor or the Coalition. 50% is a dead heat. Labor got 55% in 2022.</div>
       <div class="val"><span id="tppVal">45.0</span>%</div>
       <input type="range" id="tpp" min="40" max="60" step="0.5" value="45">
     </div>
 
     <!-- ADVANCED MODE -->
-    <div id="advanced" style="display:none">
-      <h3>Statewide primary vote (%)</h3>
+    <div id="advanced">
+      <h3>Statewide primary vote (%)<span class="q" data-h="h_prim">?</span></h3>
+      <div class="help" id="h_prim"><b>Primary vote</b> is the share of first-choice (number 1) votes for each party across Victoria. This is the figure polls usually report first.</div>
       <div id="primSliders"></div>
       <div class="total" id="total"></div>
 
-      <h3>Where One Nation's vote lands</h3>
+      <h3>Where One Nation's vote lands<span class="q" data-h="h_conc">?</span></h3>
+      <div class="help" id="h_conc">One Nation barely ran in 2022, so there is no local history to build on. This slider sets how much stronger its vote is in regional Victoria than in inner Melbourne. These weights are estimates.</div>
       <div class="row"><span>Regional lean</span>
         <input type="range" id="conc" min="0" max="2" step="0.25" value="1">
         <span id="concVal">1</span></div>
       <div style="font-size:11px;color:#777">0 = same in every seat · 1 = stronger in regional Victoria, weaker in inner Melbourne (default) · 2 = strongly regional</div>
 
-      <h3>Preference flows (%)</h3>
+      <h3>Preference flows (%)<span class="q" data-h="h_flow">?</span></h3>
+      <div class="help" id="h_flow">Victoria uses preferential voting. When a party is knocked out of the count, its votes pass to the voters' next choices. <b>ONP → Coal. 75</b> means 75% of One Nation votes go to the Coalition ahead of Labor.</div>
       <div id="flowSliders"></div>
       <div class="presets">
         <button data-preset="default">Default</button>
@@ -96,7 +106,8 @@
 
     <div class="disclaimer"><b>About this tool:</b> An independent scenario explorer, not a forecast. It shows what <i>might</i> happen if a poll were correct on election day, using 2022 results and simplified assumptions about swings and preferences. Real results depend on local candidates, independents and campaigns. Poll figures are as published and not endorsed by the pollsters. Not affiliated with any political party, candidate, pollster or the Victorian Electoral Commission. For official information, visit <a href="https://www.vec.vic.gov.au" target="_blank" rel="noopener">vec.vic.gov.au</a>.</div>
 
-    <h2>Closest seats</h2>
+    <h2>Closest seats<span class="q" data-h="h_close">?</span></h2>
+    <div class="help" id="h_close">Seats where the winner in this scenario is ahead by the smallest margin. A small shift in votes could change these.</div>
     <table id="close"></table>
 
     <p class="note" id="note"></p>
@@ -124,7 +135,7 @@
       ['oth', 'Others', 0, 30, 0.5, 9]
     ];
     const FLOWS = [
-      ['onp_lnp', 'ONP → Coal.', 0, 100, 5, 65],
+      ['onp_lnp', 'ONP → Coal.', 0, 100, 5, 75],
       ['lnp_onp', 'Coal. → ONP', 0, 100, 5, 55],
       ['alp_lnp', 'ALP → Coal.', 0, 100, 5, 75]
     ];
@@ -161,7 +172,7 @@
     };
 
     const PRESETS = {
-      default: { onp_lnp: 65, lnp_onp: 55 },
+      default: { onp_lnp: 75, lnp_onp: 55 },
       weak:    { onp_lnp: 20, lnp_onp: 20 },
       deal:    { onp_lnp: 80, lnp_onp: 80 }
     };
@@ -171,7 +182,7 @@
       attribution: 'Tiles &copy; Esri', maxZoom: 16
     }).addTo(map);
 
-    let mode = 'simple';
+    let mode = 'advanced';
     let seatsLayer;
 
     // Build a row of label + slider + value for each definition
@@ -232,7 +243,7 @@
       features.forEach(ft => { const p = ft.properties; base[p.code] = Math.max(0.2, (REGION_W[p.region] || 1) * (1 - 1.5 * p.grn / 100)); });
       const mean = Object.values(base).reduce((t, v) => t + v, 0) / features.length;
       for (const k in base) ONP_W[k] = base[k] / mean;
-      const f0 = { onp_lnp: 0.65, lnp_onp: 0.55, alp_lnp: 0.75 };
+      const f0 = {}; FLOWS.forEach(([k, , , , , v]) => f0[k] = v / 100);
       features.forEach(ft => {
         const p = ft.properties;
         if (p.fixed === 1 || p.tpp22 === null) return;
@@ -327,6 +338,9 @@
       document.getElementById('close').innerHTML = close.slice(0, 10)
         .map(c => `<tr><td><span class="swatch" style="background:${COLOURS[c.winner]}"></span>${c.name}</td><td class="pair">${c.pair}</td><td class="n">${c.margin.toFixed(1)}%</td></tr>`).join('');
 
+      document.getElementById('modeinfo').textContent = mode === 'simple'
+        ? 'Quick estimate: moves every seat by the same two-party swing. Simpler, but ignores where One Nation and the Greens are strong, so it can differ from the detailed view.'
+        : 'Detailed: works seat by seat from each party\'s vote and preferences, including where One Nation is likely to be strong. Best for trying out a poll.';
       document.getElementById('note').textContent = mode === 'simple'
         ? 'Uniform 2PP swing from 2022. 14 seats with Greens or independent contests are held fixed. A scenario explorer, not a forecast.'
         : 'Each party\'s 2022 seat vote is scaled by its statewide change (proportional swing), and each seat is calibrated so the 2022 figures reproduce the 2022 result. One Nation barely ran in 2022, so its vote is placed using an estimated regional lean (adjustable above). Greens split 80/15/5 and Others 30/35/35 (ALP/Coal/ONP); the lowest of the three majors is then excluded. 14 seats held fixed. A scenario explorer, not a forecast.';
@@ -357,6 +371,10 @@
           const pr = PRESETS[btn.dataset.preset];
           for (const k in pr) document.getElementById('f_' + k).value = pr[k];
           update();
+        });
+        document.querySelectorAll('.q').forEach(q => q.onclick = () => {
+          q.classList.toggle('open');
+          document.getElementById(q.dataset.h).classList.toggle('open');
         });
         const pollBox = document.getElementById('polls');
         POLLS.forEach((pl, i) => {
