@@ -36,13 +36,22 @@
     h2 { font-size: 15px; margin: 16px 0 6px; }
     h3 { font-size: 13px; margin: 12px 0 4px; color: #444; }
     .note { font-size: 12px; color: #777; margin-top: 16px; }
+    .polls { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 6px; }
+    .polls button { padding: 5px 7px; border: 1px solid #bbb; background: #fff; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    .polls button.on { background: #222; color: #fff; border-color: #222; }
+    .pollinfo { font-size: 12px; color: #555; min-height: 16px; margin-bottom: 12px; }
+    .implied { font-size: 13px; margin: 8px 0 4px; }
     @media (max-width: 700px) { body { flex-direction: column; } #panel { width: 100%; max-height: 50vh; border-right: 0; border-bottom: 1px solid #ddd; } }
   </style>
 </head>
 <body>
   <div id="panel">
     <h1>Victoria Votes 2026</h1>
-    <p class="sub">What happens if votes swing from 2022?</p>
+    <p class="sub">What happens if votes swing from 2022? Start from a poll, then drag the sliders to make your own guess.</p>
+
+    <label>Start from a poll</label>
+    <div class="polls" id="polls"></div>
+    <div class="pollinfo" id="pollinfo"></div>
 
     <div class="tabs">
       <button id="tabSimple" class="on">Simple: 2PP swing</button>
@@ -52,8 +61,8 @@
     <!-- SIMPLE MODE -->
     <div id="simple">
       <label for="tpp">Labor two-party preferred (statewide)</label>
-      <div class="val"><span id="tppVal">55.0</span>%</div>
-      <input type="range" id="tpp" min="40" max="60" step="0.5" value="55">
+      <div class="val"><span id="tppVal">45.0</span>%</div>
+      <input type="range" id="tpp" min="40" max="60" step="0.5" value="45">
     </div>
 
     <!-- ADVANCED MODE -->
@@ -62,6 +71,12 @@
       <div id="primSliders"></div>
       <div class="total" id="total"></div>
 
+      <h3>Where One Nation's vote lands</h3>
+      <div class="row"><span>Regional lean</span>
+        <input type="range" id="conc" min="0" max="2" step="0.25" value="1">
+        <span id="concVal">1</span></div>
+      <div style="font-size:11px;color:#777">0 = same in every seat · 1 = stronger in regional Victoria, weaker in inner Melbourne (default) · 2 = strongly regional</div>
+
       <h3>Preference flows (%)</h3>
       <div id="flowSliders"></div>
       <div class="presets">
@@ -69,6 +84,7 @@
         <button data-preset="weak">Weak ONP–LNP</button>
         <button data-preset="deal">Preference deal</button>
       </div>
+      <div class="implied" id="implied"></div>
     </div>
 
     <div class="bar" id="bar"><span class="majority"></span></div>
@@ -94,21 +110,53 @@
     const PARTIES = ['Labor', 'Liberal', 'Nationals', 'Greens', 'One Nation'];
 
     // Statewide 2022 primaries (the baseline the swing is measured from)
-    const S22 = { alp: 37.0, lnp: 34.5, grn: 11.5, onp: 0.3, oth: 17.1 };
+    const S22 = { alp: 37.0, lnp: 34.5, grn: 11.5, onp: 0.3, oth: 16.7 };
 
     // Slider definitions: [key, label, min, max, step, default]
     const PRIMS = [
-      ['alp', 'Labor', 10, 50, 0.5, 26],
-      ['lnp', 'Coalition', 10, 50, 0.5, 26],
-      ['grn', 'Greens', 0, 30, 0.5, 13.5],
-      ['onp', 'One Nation', 0, 40, 0.5, 23.5],
-      ['oth', 'Others', 0, 30, 0.5, 11]
+      ['alp', 'Labor', 10, 50, 0.5, 24],
+      ['lnp', 'Coalition', 10, 50, 0.5, 33],
+      ['grn', 'Greens', 0, 30, 0.5, 14],
+      ['onp', 'One Nation', 0, 40, 0.5, 20],
+      ['oth', 'Others', 0, 30, 0.5, 9]
     ];
     const FLOWS = [
       ['onp_lnp', 'ONP → Coal.', 0, 100, 5, 65],
       ['lnp_onp', 'Coal. → ONP', 0, 100, 5, 55],
       ['alp_lnp', 'ALP → Coal.', 0, 100, 5, 75]
     ];
+    // Published statewide polls (primary %, and the pollster's own Labor 2PP where published).
+    // Update this list as new polls come out.
+    const POLLS = [
+      { name: '2022 result', date: '26 Nov 2022', src: 'VEC',               p: { alp: 37, lnp: 34.5, grn: 11.5, onp: 0.3, oth: 16.7 }, tpp: 55 },
+      { name: 'Newspoll',    date: '15–22 Oct 2026', src: 'The Australian',  p: { alp: 24, lnp: 33, grn: 14, onp: 20, oth: 9 },  tpp: 45 },
+      { name: 'RedBridge',   date: '1–14 Sep 2026',  src: 'AFR',             p: { alp: 24, lnp: 29, grn: 15, onp: 25, oth: 7 },  tpp: 44 },
+      { name: 'Resolve',     date: '13 Sep 2026',    src: 'The Age',         p: { alp: 25, lnp: 28, grn: 12, onp: 23, oth: 12 }, tpp: null },
+      { name: 'DemosAU',     date: '6–11 Aug 2026',  src: 'Premier National',p: { alp: 23, lnp: 32, grn: 13, onp: 22, oth: 10 }, tpp: 45 },
+      { name: 'Roy Morgan',  date: '5–7 Aug 2026',   src: 'Roy Morgan',      p: { alp: 26, lnp: 26, grn: 12.5, onp: 23.5, oth: 12 }, tpp: 49 }
+    ];
+
+    // One Nation had almost no 2022 base, so its vote is placed using a regional lean:
+    // stronger in regional Victoria and outer suburbs, weaker in inner Melbourne and high-Greens seats.
+    // These weights are approximate estimates, not measured data.
+    const REGION_W = {
+      'Northern Victoria Region': 1.5, 'Eastern Victoria Region': 1.5, 'Western Victoria Region': 1.35,
+      'South-Eastern Metropolitan Region': 1.1, 'Western Metropolitan Region': 0.95,
+      'North-Eastern Metropolitan Region': 0.85, 'Northern Metropolitan Region': 0.7,
+      'Southern Metropolitan Region': 0.55
+    };
+
+    // Changes since 2022 shown in seat tooltips
+    const SEAT_NOTES = {
+      'Ringwood': 'MP Will Fowles now sits as an independent (elected as Labor).',
+      'South Barwon': 'MP Darren Cheeseman now sits as an independent (elected as Labor).',
+      'Werribee': 'Feb 2025 by-election: Labor held 50.8–49.2 v Liberal.',
+      'Prahran': 'Feb 2025 by-election: Liberal gain from Greens.',
+      'Nepean': 'May 2026 by-election: Liberal hold.',
+      'Warrandyte': 'Aug 2023 by-election: Liberal hold.',
+      'Mulgrave': 'Nov 2023 by-election: Labor hold.'
+    };
+
     const PRESETS = {
       default: { onp_lnp: 65, lnp_onp: 55 },
       weak:    { onp_lnp: 20, lnp_onp: 20 },
@@ -146,32 +194,71 @@
       return { winner, margin: Math.abs(alp - 50), pair: 'ALP v Coalition', detail: `Labor 2PP: ${alp.toFixed(1)}%` };
     }
 
-    // ---------- ADVANCED MODE: same rules as the QGIS e_, r_, final_pair, pref_winner fields ----------
-    function prefResult(p, s, f) {
+    // ---------- ADVANCED MODE ----------
+    let ONP_W = {};      // seat code -> One Nation weight (average 1 across 88 seats)
+    let OFFSET = {};     // seat code -> local 2PP adjustment so 2022 inputs reproduce the 2022 result
+    let STATE_OFFSET = 0;
+
+    // 1. estimate 2026 primaries: proportional swing for Labor, Coalition, Greens, Others;
+    //    One Nation placed by its regional weight; then scaled to 100%
+    function seatPrims(p, s, conc) {
+      const e = {}; let sum = 0;
+      for (const k of ['alp', 'lnp', 'grn', 'oth']) { e[k] = p[k] * s[k] / S22[k]; sum += e[k]; }
+      const w = Math.max(0.1, 1 + conc * ((ONP_W[p.code] || 1) - 1));
+      e.onp = Math.min(70, s.onp * w);
+      const scale = sum > 0 ? (100 - e.onp) / sum : 0;
+      for (const k of ['alp', 'lnp', 'grn', 'oth']) e[k] *= scale;
+      return e;
+    }
+    // 2. distribute Greens and Others to the three majors
+    function round1(e) {
+      return {
+        a: e.alp + 0.80 * e.grn + 0.30 * e.oth,
+        l: e.lnp + 0.15 * e.grn + 0.35 * e.oth,
+        o: e.onp + 0.05 * e.grn + 0.35 * e.oth
+      };
+    }
+    // Labor share of the Labor v Coalition two-party vote
+    function alpTpp(e, f) {
+      const { a, l, o } = round1(e);
+      return 100 * (a + o * (1 - f.onp_lnp)) / (a + l + o);
+    }
+
+    function initModel(features) {
+      const base = {};
+      features.forEach(ft => { const p = ft.properties; base[p.code] = Math.max(0.2, (REGION_W[p.region] || 1) * (1 - 1.5 * p.grn / 100)); });
+      const mean = Object.values(base).reduce((t, v) => t + v, 0) / features.length;
+      for (const k in base) ONP_W[k] = base[k] / mean;
+      const f0 = { onp_lnp: 0.65, lnp_onp: 0.55, alp_lnp: 0.75 };
+      features.forEach(ft => {
+        const p = ft.properties;
+        if (p.fixed === 1 || p.tpp22 === null) return;
+        OFFSET[p.code] = p.tpp22 - alpTpp(seatPrims(p, S22, 1), f0);
+      });
+      STATE_OFFSET = 55 - alpTpp(S22, f0);
+    }
+
+    function prefResult(p, s, f, conc) {
       if (p.fixed === 1) return { winner: p.held, margin: null, pair: 'Held fixed' };
       const coal = p.held === 'Nationals' ? 'Nationals' : 'Liberal';
-
-      // 1. estimate 2026 primaries: 2022 seat vote + statewide change
-      const e = {};
-      for (const k of ['alp', 'lnp', 'grn', 'onp', 'oth']) e[k] = Math.max(0, p[k] + s[k] - S22[k]);
-
-      // 2. distribute Greens and Others
-      const a = e.alp + 0.80 * e.grn + 0.30 * e.oth;
-      const l = e.lnp + 0.15 * e.grn + 0.35 * e.oth;
-      const o = e.onp + 0.05 * e.grn + 0.35 * e.oth;
+      const e = seatPrims(p, s, conc);
+      const { a, l, o } = round1(e);
 
       // 3. exclude the lowest of the three, flow their votes
-      let x, y, nx, ny, pair;
-      if (o <= a && o <= l)      { x = a + o * (1 - f.onp_lnp); y = l + o * f.onp_lnp; nx = 'Labor'; ny = coal;         pair = 'ALP v Coalition'; }
-      else if (l <= a && l <= o) { x = a + l * (1 - f.lnp_onp); y = o + l * f.lnp_onp; nx = 'Labor'; ny = 'One Nation'; pair = 'ALP v ONP'; }
-      else                       { x = l + a * f.alp_lnp;       y = o + a * (1 - f.alp_lnp); nx = coal; ny = 'One Nation'; pair = 'Coalition v ONP'; }
-
-      const share = 100 * Math.max(x, y) / (x + y);
+      let share, winner, pair;
+      if (o <= a && o <= l) {
+        const alp = 100 * (a + o * (1 - f.onp_lnp)) / (a + l + o) + (OFFSET[p.code] || 0);
+        winner = alp > 50 ? 'Labor' : coal; share = Math.max(alp, 100 - alp); pair = 'ALP v Coalition';
+      } else if (l <= a && l <= o) {
+        const x = a + l * (1 - f.lnp_onp), y = o + l * f.lnp_onp;
+        winner = x > y ? 'Labor' : 'One Nation'; share = 100 * Math.max(x, y) / (x + y); pair = 'ALP v ONP';
+      } else {
+        const x = l + a * f.alp_lnp, y = o + a * (1 - f.alp_lnp);
+        winner = x > y ? coal : 'One Nation'; share = 100 * Math.max(x, y) / (x + y); pair = 'Coalition v ONP';
+      }
       return {
-        winner: x > y ? nx : ny,
-        margin: share - 50,
-        pair,
-        detail: `Round 1: ALP ${a.toFixed(1)}, Coal ${l.toFixed(1)}, ONP ${o.toFixed(1)}<br>Final: ${pair}, winner ${share.toFixed(1)}%`
+        winner, margin: share - 50, pair,
+        detail: `Est. primaries: ALP ${e.alp.toFixed(1)}, Coal ${e.lnp.toFixed(1)}, GRN ${e.grn.toFixed(1)}, ONP ${e.onp.toFixed(1)}<br>Final: ${pair}, winner ${share.toFixed(1)}%`
       };
     }
 
@@ -181,6 +268,11 @@
       const s = {}, f = {};
       PRIMS.forEach(([k]) => { s[k] = num('s_' + k); document.getElementById('s_' + k + 'Val').textContent = s[k]; });
       FLOWS.forEach(([k]) => { f[k] = num('f_' + k) / 100; document.getElementById('f_' + k + 'Val').textContent = num('f_' + k); });
+      const conc = num('conc');
+      document.getElementById('concVal').textContent = conc;
+      const implied = alpTpp(s, f) + STATE_OFFSET;
+      document.getElementById('implied').innerHTML =
+        `Implied Labor two-party vote: <b>${implied.toFixed(1)}%</b> (with these preference flows; pollsters' own 2PP figures may differ)`;
 
       const total = Object.values(s).reduce((t, v) => t + v, 0);
       const tEl = document.getElementById('total');
@@ -193,7 +285,7 @@
 
       seatsLayer.eachLayer(layer => {
         const p = layer.feature.properties;
-        const r = mode === 'simple' ? simpleResult(p, num('tpp')) : prefResult(p, s, f);
+        const r = mode === 'simple' ? simpleResult(p, num('tpp')) : prefResult(p, s, f, conc);
         counts[r.winner]++;
         if (r.margin !== null) close.push({ name: p.name, winner: r.winner, margin: r.margin, pair: r.pair });
 
@@ -203,7 +295,8 @@
         layer.setTooltipContent(
           `<b>${p.name}</b><br>2022: ${p.final22}<br>` +
           (r.margin === null ? 'Held fixed (Greens/independent contest)' : r.detail) +
-          `<br>Result: <b>${r.winner}</b>${flipped ? ' (gain from ' + p.held + ')' : ''}`);
+          `<br>Result: <b>${r.winner}</b>${flipped ? ' (gain from ' + p.held + ')' : ''}` +
+          (SEAT_NOTES[p.name] ? `<br><i>${SEAT_NOTES[p.name]}</i>` : ''));
       });
 
       // seat bar
@@ -233,7 +326,7 @@
 
       document.getElementById('note').textContent = mode === 'simple'
         ? 'Uniform 2PP swing from 2022. 14 seats with Greens or independent contests are held fixed. A scenario explorer, not a forecast.'
-        : 'Each party\'s 2022 seat vote shifted by its statewide change. Greens split 80/15/5 and Others 30/35/35 (ALP/Coal/ONP); the lowest of the three majors is then excluded. One Nation barely ran in 2022, so its vote is spread almost evenly. 14 seats held fixed. A scenario explorer, not a forecast.';
+        : 'Each party\'s 2022 seat vote is scaled by its statewide change (proportional swing), and each seat is calibrated so the 2022 figures reproduce the 2022 result. One Nation barely ran in 2022, so its vote is placed using an estimated regional lean (adjustable above). Greens split 80/15/5 and Others 30/35/35 (ALP/Coal/ONP); the lowest of the three majors is then excluded. 14 seats held fixed. A scenario explorer, not a forecast.';
     }
 
     function setMode(m) {
@@ -248,6 +341,7 @@
     fetch('data/districts.geojson')
       .then(r => r.json())
       .then(data => {
+        initModel(data.features);
         seatsLayer = L.geoJSON(data, {
           style: { fillOpacity: 0.8 },
           onEachFeature: (feat, layer) => layer.bindTooltip('')
@@ -261,7 +355,28 @@
           for (const k in pr) document.getElementById('f_' + k).value = pr[k];
           update();
         });
-        update();
+        const pollBox = document.getElementById('polls');
+        POLLS.forEach((pl, i) => {
+          const b = document.createElement('button');
+          b.textContent = pl.name;
+          b.onclick = () => {
+            for (const k in pl.p) document.getElementById('s_' + k).value = pl.p[k];
+            const t = pl.tpp !== null ? pl.tpp : Math.round(2 * (alpTpp(pl.p, { onp_lnp: num('f_onp_lnp') / 100 }) + STATE_OFFSET)) / 2;
+            document.getElementById('tpp').value = t;
+            pollBox.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+            b.classList.add('on');
+            document.getElementById('pollinfo').textContent =
+              `${pl.name} (${pl.src}), ${pl.date}: ALP ${pl.p.alp}, Coalition ${pl.p.lnp}, Greens ${pl.p.grn}, One Nation ${pl.p.onp}, Others ${pl.p.oth}` +
+              (pl.tpp !== null ? ` · Labor 2PP ${pl.tpp}` : ' · no 2PP published');
+            update();
+          };
+          pollBox.appendChild(b);
+        });
+        document.querySelectorAll('input[type=range]').forEach(el => el.addEventListener('input', () => {
+          pollBox.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+          document.getElementById('pollinfo').textContent = 'Your own guess';
+        }));
+        pollBox.querySelectorAll('button')[1].click();
       });
 
   </script>
