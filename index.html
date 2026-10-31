@@ -12,9 +12,7 @@
     #map { flex: 1; }
     h1 { font-size: 20px; margin: 0 0 4px; }
     .sub { font-size: 13px; color: #666; margin: 0 0 12px; }
-    .tabs { display: flex; gap: 4px; margin-bottom: 14px; }
-    .tabs button, .presets button { flex: 1; padding: 7px; border: 1px solid #bbb; background: #fff; border-radius: 4px; cursor: pointer; font-size: 13px; }
-    .tabs button.on { background: #222; color: #fff; border-color: #222; }
+    .presets button { flex: 1; padding: 7px; border: 1px solid #bbb; background: #fff; border-radius: 4px; cursor: pointer; font-size: 13px; }
     .presets { display: flex; gap: 4px; margin: 6px 0 12px; }
     .presets button { font-size: 12px; padding: 5px 3px; }
     label { font-weight: 600; font-size: 14px; }
@@ -45,7 +43,7 @@
     .q:hover, .q.open { background: #222; color: #fff; }
     .help { display: none; font-size: 12px; font-weight: 400; line-height: 1.4; color: #333; background: #fff8e1; border: 1px solid #e6d9a8; border-radius: 4px; padding: 6px 8px; margin: 4px 0 8px; }
     .help.open { display: block; }
-    .modeinfo { font-size: 12px; color: #555; margin: -6px 0 12px; }
+    .ref2022 { font-size: 12px; color: #444; background: #f0f0f0; border-radius: 4px; padding: 6px 8px; margin: 0 0 12px; }
     .disclaimer { font-size: 12px; line-height: 1.4; color: #444; background: #fff; border: 1px solid #ddd; border-left: 3px solid #888; border-radius: 4px; padding: 8px 10px; margin: 12px 0 4px; }
     @media (max-width: 700px) { body { flex-direction: column; } #panel { width: 100%; max-height: 50vh; border-right: 0; border-bottom: 1px solid #ddd; } }
   </style>
@@ -59,21 +57,9 @@
     <div class="polls" id="polls"></div>
     <div class="pollinfo" id="pollinfo"></div>
 
-    <div class="tabs">
-      <button id="tabAdv" class="on">Detailed (recommended)</button>
-      <button id="tabSimple">Quick estimate</button>
-    </div>
-    <div class="modeinfo" id="modeinfo"></div>
+    <div class="ref2022"><b>2022 result:</b> Labor 56, Liberal 19, Nationals 9, Greens 4 seats (Labor 55% two-party preferred). Prahran has since gone Liberal at a 2025 by-election.</div>
 
-    <!-- SIMPLE MODE -->
-    <div id="simple" style="display:none">
-      <label for="tpp">Labor two-party preferred (statewide)</label><span class="q" data-h="h_tpp">?</span>
-      <div class="help" id="h_tpp"><b>Two-party preferred (2PP)</b> is each side's share after preferences, when every vote ends up with either Labor or the Coalition. 50% is a dead heat. Labor got 55% in 2022.</div>
-      <div class="val"><span id="tppVal">45.0</span>%</div>
-      <input type="range" id="tpp" min="40" max="60" step="0.5" value="45">
-    </div>
-
-    <!-- ADVANCED MODE -->
+    <!-- SLIDERS -->
     <div id="advanced">
       <h3>Statewide primary vote (%)<span class="q" data-h="h_prim">?</span></h3>
       <div class="help" id="h_prim"><b>Primary vote</b> is the share of first-choice (number 1) votes for each party across Victoria. This is the figure polls usually report first.</div>
@@ -95,7 +81,8 @@
         <button data-preset="weak">Weak ONP–LNP</button>
         <button data-preset="deal">Preference deal</button>
       </div>
-      <div class="implied" id="implied"></div>
+      <div class="implied"><span id="implied"></span><span class="q" data-h="h_tpp">?</span></div>
+      <div class="help" id="h_tpp"><b>Two-party preferred</b> is each side's share after preferences, when every vote ends up with either Labor or the Coalition. 50% is a dead heat. Labor got 55% in 2022.</div>
     </div>
 
     <div class="bar" id="bar"><span class="majority"></span></div>
@@ -182,7 +169,6 @@
       attribution: 'Tiles &copy; Esri', maxZoom: 16
     }).addTo(map);
 
-    let mode = 'advanced';
     let seatsLayer;
 
     // Build a row of label + slider + value for each definition
@@ -199,14 +185,6 @@
     makeSliders('flowSliders', FLOWS, 'f_');
 
     const num = id => parseFloat(document.getElementById(id).value);
-
-    // ---------- SIMPLE MODE: same rule as the QGIS "predicted" field ----------
-    function simpleResult(p, tpp) {
-      if (p.fixed === 1 || p.tpp22 === null) return { winner: p.held, margin: null, pair: 'Held fixed' };
-      const alp = p.tpp22 + (tpp - 55);
-      const winner = alp > 50 ? 'Labor' : (p.held === 'Nationals' ? 'Nationals' : 'Liberal');
-      return { winner, margin: Math.abs(alp - 50), pair: 'ALP v Coalition', detail: `Labor 2PP: ${alp.toFixed(1)}%` };
-    }
 
     // ---------- ADVANCED MODE ----------
     let ONP_W = {};      // seat code -> One Nation weight (average 1 across 88 seats)
@@ -278,7 +256,6 @@
 
     function update() {
       // read inputs
-      document.getElementById('tppVal').textContent = num('tpp').toFixed(1);
       const s = {}, f = {};
       PRIMS.forEach(([k]) => { s[k] = num('s_' + k); document.getElementById('s_' + k + 'Val').textContent = s[k]; });
       FLOWS.forEach(([k]) => { f[k] = num('f_' + k) / 100; document.getElementById('f_' + k + 'Val').textContent = num('f_' + k); });
@@ -299,7 +276,7 @@
 
       seatsLayer.eachLayer(layer => {
         const p = layer.feature.properties;
-        const r = mode === 'simple' ? simpleResult(p, num('tpp')) : prefResult(p, s, f, conc);
+        const r = prefResult(p, s, f, conc);
         counts[r.winner]++;
         if (r.margin !== null) close.push({ name: p.name, winner: r.winner, margin: r.margin, pair: r.pair });
 
@@ -338,21 +315,8 @@
       document.getElementById('close').innerHTML = close.slice(0, 10)
         .map(c => `<tr><td><span class="swatch" style="background:${COLOURS[c.winner]}"></span>${c.name}</td><td class="pair">${c.pair}</td><td class="n">${c.margin.toFixed(1)}%</td></tr>`).join('');
 
-      document.getElementById('modeinfo').textContent = mode === 'simple'
-        ? 'Quick estimate: moves every seat by the same two-party swing. Simpler, but ignores where One Nation and the Greens are strong, so it can differ from the detailed view.'
-        : 'Detailed: works seat by seat from each party\'s vote and preferences, including where One Nation is likely to be strong. Best for trying out a poll.';
-      document.getElementById('note').textContent = mode === 'simple'
-        ? 'Uniform 2PP swing from 2022. 14 seats with Greens or independent contests are held fixed. A scenario explorer, not a forecast.'
-        : 'Each party\'s 2022 seat vote is scaled by its statewide change (proportional swing), and each seat is calibrated so the 2022 figures reproduce the 2022 result. One Nation barely ran in 2022, so its vote is placed using an estimated regional lean (adjustable above). Greens split 80/15/5 and Others 30/35/35 (ALP/Coal/ONP); the lowest of the three majors is then excluded. 14 seats held fixed. A scenario explorer, not a forecast.';
-    }
-
-    function setMode(m) {
-      mode = m;
-      document.getElementById('simple').style.display = m === 'simple' ? '' : 'none';
-      document.getElementById('advanced').style.display = m === 'simple' ? 'none' : '';
-      document.getElementById('tabSimple').classList.toggle('on', m === 'simple');
-      document.getElementById('tabAdv').classList.toggle('on', m !== 'simple');
-      update();
+      document.getElementById('note').textContent =
+        'Each party\'s 2022 seat vote is scaled by its statewide change (proportional swing), and each seat is calibrated so the 2022 figures reproduce the 2022 result. One Nation barely ran in 2022, so its vote is placed using an estimated regional lean (adjustable above). Greens split 80/15/5 and Others 30/35/35 (ALP/Coal/ONP); the lowest of the three majors is then excluded. 14 seats held fixed. A scenario explorer, not a forecast.';
     }
 
     fetch('data/districts.geojson')
@@ -365,8 +329,6 @@
         }).addTo(map);
 
         document.querySelectorAll('input[type=range]').forEach(el => el.addEventListener('input', update));
-        document.getElementById('tabSimple').onclick = () => setMode('simple');
-        document.getElementById('tabAdv').onclick = () => setMode('advanced');
         document.querySelectorAll('[data-preset]').forEach(btn => btn.onclick = () => {
           const pr = PRESETS[btn.dataset.preset];
           for (const k in pr) document.getElementById('f_' + k).value = pr[k];
@@ -382,8 +344,6 @@
           b.textContent = pl.name;
           b.onclick = () => {
             for (const k in pl.p) document.getElementById('s_' + k).value = pl.p[k];
-            const t = pl.tpp !== null ? pl.tpp : Math.round(2 * (alpTpp(pl.p, { onp_lnp: num('f_onp_lnp') / 100 }) + STATE_OFFSET)) / 2;
-            document.getElementById('tpp').value = t;
             pollBox.querySelectorAll('button').forEach(x => x.classList.remove('on'));
             b.classList.add('on');
             document.getElementById('pollinfo').textContent =
